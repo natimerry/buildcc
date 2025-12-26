@@ -33,7 +33,16 @@ Edit build configuration at the top of `build.c`:
 
 `SELF_CC` specifies the compiler used to rebuild the build system itself, useful when cross-compiling.
 
-Optional build.config.h file for additional configuration.
+#### build.config.h
+
+Optional configuration header for project-specific settings. The build system checks for modifications to this file and triggers rebuilds when changed.
+
+**Important:** The config file name is derived from the build system filename. If you rename `build.c` to `mybuild.c`, the config file must be named `mybuild.config.h`. The naming pattern is: `<basename>.config.h`
+
+Example:
+- `build.c` → `build.config.h`
+- `compile.c` → `compile.config.h`
+- `mk.c` → `mk.config.h`
 
 ### Defining Targets
 
@@ -99,4 +108,3 @@ This approach provides explicit control over compilation flags per file.
 ## License
 
 See LICENSE file for details.
-
