@@ -84,7 +84,20 @@ typedef struct {
              (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *)),   \
          .capacity = 0}
          
-         
+#define OBJ(out, srcfile, ...) \
+    target(out, \
+           CMD(CC, "-c", srcfile, "-o", out), \
+           src(srcfile), \
+           __VA_ARGS__, \
+           NULL)
+
+
+#define BIN(out, ...) \
+    target(out, \
+           CMD(CC, __VA_ARGS__, "-o", out), \
+           __VA_ARGS__, \
+           NULL)
+           
 void cmd_internal_append(Cmd *cmd, ...);
 
 #define cmd_append(CMD, ...) cmd_internal_append(CMD, __VA_ARGS__, NULL)
