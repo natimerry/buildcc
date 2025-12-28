@@ -1,3 +1,4 @@
+#include <dirent.h>
 #define _XOPEN_SOURCE 700
 #include "build.config.h"
 #include <stdbool.h>
@@ -515,3 +516,176 @@ Target* obj(const char *obj_file, Cmd *compile_cmd, ...) {
     return t;
 }
 
+
+char** glob_files(const char *dir, const char *extension) {
+    DIR *d = opendir(dir);
+    if (!d) return NULL;
+    
+    size_t capacity = 16;
+    size_t count = 0;
+    char **files = malloc(capacity * sizeof(char*));
+    
+    struct dirent *entry;
+    while ((entry = readdir(d)) != NULL) {
+        if (entry->d_type == DT_REG) {
+            const char *dot = strrchr(entry->d_name, '.');
+            if (dot && strcmp(dot, extension) == 0) {
+                if (count >= capacity) {
+                    capacity *= 2;
+                    files = realloc(files, capacity * sizeof(char*));
+                }
+                
+                size_t path_len = strlen(dir) + strlen(entry->d_name) + 2;
+                char *path = malloc(path_len);
+                snprintf(path, path_len, "%s/%s", dir, entry->d_name);
+                files[count++] = path;
+            }
+        }
+    }
+    closedir(d);
+    
+    files[count] = NULL;
+    return files;
+}
+
+void free_glob(char **files) {
+    if (!files) return;
+    for (int i = 0; files[i]; i++) {
+        free(files[i]);
+    }
+    free(files);
+}
+
+
+static char* get_stem(const char *path) {
+    const char *slash = strrchr(path, '/');
+    const char *base = slash ? slash + 1 : path;
+    
+    const char *dot = strrchr(base, '.');
+    size_t len = dot ? (size_t)(dot - base) : strlen(base);
+    
+    char *result = malloc(len + 1);
+    memcpy(result, base, len);
+    result[len] = '\0';
+    return result;
+}
+Target** compile_sources(const char **sources, Cmd *base_flags,
+                        CompilePattern *pattern, int *out_count) {
+    ensure_dir(BUILD_DIR);
+    
+    int count = 0;
+    while (sources[count]) count++;
+    
+    Target **objs = malloc(count * sizeof(Target*));
+    
+    for (int i = 0; i < count; i++) {
+        const char *csrc = sources[i];
+        char *basename = get_stem(csrc);
+        
+        size_t obj_len = strlen(BUILD_DIR) + strlen(basename) + 4;
+        char *obj_path = malloc(obj_len);
+        snprintf(obj_path, obj_len, "%s/%s.o", BUILD_DIR, basename);
+        free(basename);
+        
+        Cmd *compile = cmd_clone(base_flags);
+        cmd_append(compile, csrc, pattern->output_flag, obj_path, NULL);
+        
+        Target *t = calloc(1, sizeof(Target));
+        t->output = obj_path;
+        t->cmd = compile;
+        t->deps = malloc(2 * sizeof(Target*));
+        t->deps[0] = src(csrc);
+        t->deps[1] = NULL;
+        
+        objs[i] = t;
+    }
+    
+    *out_count = count;
+    return objs;
+}
+
+
+size_t dep_count(Target *t) {
+    if (!t || !t->deps) return 0;
+    
+    size_t count = 0;
+    while (t->deps[count] != NULL) {
+        count++;
+    }
+    return count;
+}
+
+bool has_dep(Target *t, Target *dep) {
+    if (!t || !dep || !t->deps) return false;
+    
+    for (size_t i = 0; t->deps[i] != NULL; i++) {
+        if (t->deps[i] == dep) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void add_dep(Target *t, Target *dep) {
+    if (!t || !dep) return;
+    
+    size_t count = dep_count(t);
+    
+    // Realloc to fit new dep + NULL terminator
+    t->deps = realloc(t->deps, (count + 2) * sizeof(Target*));
+    t->deps[count] = dep;
+    t->deps[count + 1] = NULL;
+}
+
+void add_deps(Target *t, ...) {
+    if (!t) return;
+    
+    va_list args;
+    va_start(args, t);
+    
+    Target *dep;
+    while ((dep = va_arg(args, Target*)) != NULL) {
+        add_dep(t, dep);
+    }
+    
+    va_end(args);
+}
+
+bool remove_dep(Target *t, Target *dep) {
+    if (!t || !dep || !t->deps) return false;
+    
+    size_t count = dep_count(t);
+    
+    size_t idx = 0;
+    bool found = false;
+    for (; idx < count; idx++) {
+        if (t->deps[idx] == dep) {
+            found = true;
+            break;
+        }
+    }
+    
+    if (!found) return false;
+    
+    for (size_t i = idx; i < count; i++) {
+        t->deps[i] = t->deps[i + 1];
+    }
+    
+    if (count > 1) {
+        t->deps = realloc(t->deps, count * sizeof(Target*));
+    } else {
+        free(t->deps);
+        t->deps = NULL;
+    }
+    
+    return true;
+}
+
+void clear_deps(Target *t) {
+    if (!t) return;
+    
+    if (t->deps) {
+        free(t->deps);
+        t->deps = NULL;
+    }
+}

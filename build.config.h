@@ -17,6 +17,15 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+#include <dirent.h>
+#include <sys/stat.h>
+
+
+#define SRC_DIR "src"
+#define BUILD_DIR "build"
+
+
 #define CC "gcc"
 #define LINKER "gcc"
 #define CFLAGS "-Wall -Werror -ggdb"
@@ -73,9 +82,11 @@ typedef struct {
   &(Cmd){.args = (const char *[]){__VA_ARGS__, NULL},                          \
          .count =                                                              \
              (sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *)),   \
-         .capacity = 0};
-
+         .capacity = 0}
+         
+         
 void cmd_internal_append(Cmd *cmd, ...);
+
 #define cmd_append(CMD, ...) cmd_internal_append(CMD, __VA_ARGS__, NULL)
 void cmd_extend(Cmd *cmd1, const Cmd *cmd2);
 Cmd *cmd_clone(const Cmd *src);
@@ -98,5 +109,28 @@ size_t dep_count(Target *t);
 void rebuild_self(int argc, char **argv);
 void build_target(Target *root);
 time_t get_file_mtime(const char *path);
+
+
+inline void ensure_dir(const char *path)
+{
+    struct stat st = {0};
+    if (stat(path, &st) == -1) {
+        mkdir(path, 0755);
+    }
+}
+
+
+char** glob_files(const char *dir, const char *extension);
+void free_glob(char **files);
+
+typedef struct {
+    const char *src_pattern;      // e.g., "%s" for source file
+    const char *obj_pattern;      // e.g., "%s" for object file
+    const char *output_flag;      // e.g., "-o" or "--output"
+} CompilePattern;
+
+
+Target** compile_sources(const char **sources, Cmd *base_flags, 
+                        CompilePattern *pattern, int *out_count);
 
 #endif // BUILD_CONFIG_H
